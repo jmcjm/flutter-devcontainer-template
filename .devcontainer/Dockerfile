@@ -1,5 +1,3 @@
-# Inspired by: https://blog.devops.dev/developing-flutter-applications-inside-a-devcontainer-4b13de5369e2
-
 # --- Builder Stage ---
 FROM --platform=linux/amd64 debian:bookworm-slim AS builder
 
@@ -15,6 +13,7 @@ RUN apt-get update \
     unzip \
     xz-utils \
     openjdk-17-jdk \
+    gpg \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
@@ -32,7 +31,7 @@ RUN yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses && 
 
 # Download and install Flutter
 RUN mkdir -p ${FLUTTER_SDK_ROOT} \
-    && wget -O flutter.tar.xz "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.29.2-stable.tar.xz" \
+    && wget -O flutter.tar.xz "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.22.2-stable.tar.xz" \
     && tar xf flutter.tar.xz -C ${FLUTTER_SDK_ROOT} --strip-components=1 \
     && rm flutter.tar.xz
 
@@ -49,11 +48,14 @@ ENV FLUTTER_SDK_ROOT=${HOME}/flutter
 ENV PATH=$PATH:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin
 ENV PATH=$PATH:${ANDROID_SDK_ROOT}/platform-tools
 ENV PATH=$PATH:${FLUTTER_SDK_ROOT}/bin
+ENV SHELL=/bin/zsh
 
+# Install dependencies including Google Chrome
 RUN dpkg --add-architecture amd64 \
     && apt-get update \
     && apt-get -y install --no-install-recommends \
     curl \
+    wget \
     git \
     unzip \
     xz-utils \
@@ -62,18 +64,36 @@ RUN dpkg --add-architecture amd64 \
     libglu1-mesa \
     libc6:amd64 \
     sudo \
+    zsh \
+    ca-certificates \
+    clang \
+    cmake \
+    ninja-build \
+    pkg-config \
+    libgtk-3-dev \
+    liblzma-dev \
+    nano \
+    build-essential \
+    gpg \
+    # Add Google Chrome
+    && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/google-chrome-keyring.gpg \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+    && apt-get update \
+    && apt-get -y install --no-install-recommends google-chrome-stable \
+    # End Google Chrome installation
     && apt-get autoremove -y \
     && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -f /etc/apt/sources.list.d/google-chrome.list # Clean up the added repo file
 
 # Create a non-root user
 RUN groupadd --gid ${USER_GID} ${USERNAME} \
-    && useradd --uid ${USER_UID} --gid ${USER_GID} -m ${USERNAME} \
-    # [Optional add sudo support if needed in your devcontainer.
+    && useradd --uid ${USER_UID} --gid ${USER_GID} -m -s /bin/zsh ${USERNAME} \
     && echo ${USERNAME} ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/${USERNAME} \
     && chmod 0440 /etc/sudoers.d/${USERNAME}
 
 USER ${USERNAME}
+WORKDIR ${HOME}
 
 # Copy SDKs from the builder stage to the user's home directory
 COPY --from=builder --chown=${USERNAME}:${USERNAME} /android-sdk ${ANDROID_SDK_ROOT}
